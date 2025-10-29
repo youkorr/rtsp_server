@@ -115,33 +115,44 @@ void RTSPServer::send_rtsp_response_(int sock, const char *status,
 
 void RTSPServer::stream_h264_(int sock) {
   ESP_LOGI(TAG, "🎥 Starting H.264 stream");
-  
+
   uint8_t *h264_data = nullptr;
   size_t h264_size = 0;
   bool is_keyframe = false;
-  
+
   for (int i = 0; i < 300; i++) {  // Stream 300 frames (~10s @ 30fps)
-    // Obtenir une frame RGB depuis la caméra
-    uint8_t *camera_data = /* obtenir depuis caméra */;
-    size_t camera_size = /* taille frame */;
-    
-    // Encoder en H.264
+
+    // 📸 Obtenir une frame depuis la caméra
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (fb == nullptr) {
+      ESP_LOGE(TAG, "❌ Impossible d'obtenir une frame caméra");
+      continue;
+    }
+
+    uint8_t *camera_data = fb->buf;
+    size_t camera_size = fb->len;
+
+    // 🎞️ Encoder en H.264
     esp_err_t ret = this->encoder_->encode_frame(
       camera_data, camera_size,
       &h264_data, &h264_size, &is_keyframe
     );
-    
+
     if (ret == ESP_OK && h264_size > 0) {
-      // Envoyer via RTP (simplifié ici)
       send(sock, h264_data, h264_size, 0);
-      
-      ESP_LOGD(TAG, "📤 Sent %s frame (%u bytes)", 
+      ESP_LOGD(TAG, "📤 Sent %s frame (%u bytes)",
                is_keyframe ? "I" : "P", (unsigned)h264_size);
+    } else {
+      ESP_LOGW(TAG, "⚠️ Erreur encodage frame : %d", ret);
     }
-    
-    delay(33);  // ~30 FPS
+
+    // 🔄 Libérer la frame caméra
+    esp_camera_fb_return(fb);
+
+    // 🕒 Attendre ~30 FPS (33ms)
+    vTaskDelay(pdMS_TO_TICKS(33));
   }
-  
+
   ESP_LOGI(TAG, "✅ Stream finished");
 }
 
